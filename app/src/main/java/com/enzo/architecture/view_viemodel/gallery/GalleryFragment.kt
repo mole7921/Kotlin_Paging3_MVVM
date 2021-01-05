@@ -1,10 +1,18 @@
 package com.enzo.architecture.view_viemodel.gallery
 
+import android.app.SearchManager
+import android.content.ContentResolver
+import android.content.Context
+import android.database.Cursor
+import android.net.Uri
 import android.os.Bundle
+import android.provider.SearchRecentSuggestions
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.widget.SearchView
+import androidx.core.content.ContextCompat.getSystemService
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -13,6 +21,7 @@ import androidx.paging.LoadState
 import com.enzo.architecture.R
 import com.enzo.architecture.databinding.FragmentGalleryBinding
 import com.enzo.architecture.model.UnsplashPhoto
+import com.enzo.architecture.util.MySearchSuggestionsProvider
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -21,6 +30,8 @@ class GalleryFragment : Fragment(R.layout.fragment_gallery),
     private val viewModel by viewModels<GalleryViewModel>()
     private var _binding: FragmentGalleryBinding? = null
     private val binding get() = _binding!!
+    lateinit var mSuggestionAdapter:HistorySearchAdapter
+    lateinit var suggestions:SearchRecentSuggestions
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -70,14 +81,22 @@ class GalleryFragment : Fragment(R.layout.fragment_gallery),
         super.onCreateOptionsMenu(menu, inflater)
 
         inflater.inflate(R.menu.menu_gallery, menu)
+        mSuggestionAdapter = activity?.let { HistorySearchAdapter(it, R.layout.item_search_history_list, null) }!!
 
         val searchItem = menu.findItem(R.id.action_search)
         val searchView = searchItem.actionView as SearchView
+
+        searchView.suggestionsAdapter = mSuggestionAdapter
+        suggestions = SearchRecentSuggestions(activity,
+                MySearchSuggestionsProvider.AUTHORITY, MySearchSuggestionsProvider.MODE)
+
+
 
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
 
                 if (query != null) {
+                    suggestions!!.saveRecentQuery(query, null)
                     binding.recyclerView.scrollToPosition(0)
                     viewModel.searchPhotos(query)
                     searchView.clearFocus()
@@ -86,9 +105,28 @@ class GalleryFragment : Fragment(R.layout.fragment_gallery),
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
+                val cursor = getRecentSuggestions(newText!!)
+                mSuggestionAdapter!!.swapCursor(cursor)
                 return true
             }
         })
+
+        searchView.setOnSuggestionListener(object : SearchView.OnSuggestionListener {
+            override fun onSuggestionSelect(position: Int): Boolean {
+                return false
+            }
+
+            override fun onSuggestionClick(position: Int): Boolean {
+                val str = mSuggestionAdapter!!.getSuggestionText(position)
+                searchView.setQuery(str, true)
+                if (str != null) {
+                    viewModel.searchPhotos(str)
+                }
+                return true
+            }
+
+        })
+
     }
 
     override fun onItemClick(photo: UnsplashPhoto) {
@@ -100,4 +138,24 @@ class GalleryFragment : Fragment(R.layout.fragment_gallery),
         super.onDestroyView()
         _binding = null
     }
-}
+
+
+    /**
+     * 查找歷史搜尋紀錄
+     */
+    fun getRecentSuggestions(query: String): Cursor? {
+        val uriBuilder = Uri.Builder()
+                .scheme(ContentResolver.SCHEME_CONTENT)
+                .authority(MySearchSuggestionsProvider.AUTHORITY)
+
+        uriBuilder.appendPath(SearchManager.SUGGEST_URI_PATH_QUERY)
+
+        val selection = " ?"
+        val selArgs = arrayOf(query)
+
+        val uri = uriBuilder.build()
+
+        return activity?.contentResolver?.query(uri, null, selection, selArgs, null)
+    }
+
+    }

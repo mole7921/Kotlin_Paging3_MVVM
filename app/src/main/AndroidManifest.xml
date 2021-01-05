@@ -20,6 +20,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <provider
+            android:authorities="com.enzo.util.MySearchSuggestionsProvider"
+            android:name=".util.MySearchSuggestionsProvider"></provider>
     </application>
+
+
 
 </manifest>
